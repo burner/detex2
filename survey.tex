@@ -1,0 +1,1077 @@
+\documentclass[conference]{IEEEtran}
+
+\ifCLASSINFOpdf
+\else
+\fi
+
+%\usepackage{biblatex}
+%\addbibresource{biblio.bib}
+\usepackage[
+    backend=biber,
+    style=authoryear-icomp,
+    sortlocale=en_US,
+    sorting=none,
+    natbib=true,
+    url=false, 
+    doi=true,
+    style=numeric,
+    eprint=false
+	%,backref
+]{biblatex}
+\addbibresource{biblio.bib}
+
+\input{preamble}
+
+\begin{document}
+
+\title{A Survey of Static, Syntactic, Structured and Unstructured Quorum Protocols}
+
+\author{\IEEEauthorblockN{Robert Schadek and Oliver Theel}
+\IEEEauthorblockA{Carl von Ossietzky University of Oldenburg\\
+Department of Computer Science\\
+\{robert.schadek,theel\}@informatik.uni-oldenburg.de}}
+
+\maketitle
+\thispagestyle{plain}
+\pagestyle{plain}
+
+\begin{abstract}
+Quorums are a powerful concept that can be used to implement highly available
+services.
+Quorum protocols use replicas of data to increase service availability.
+These quorum protocols can exbibit a variety of different properties.
+This paper will systematically introduce these properties and then use them
+to analyze existing quorum protocol that bear historical relevance.
+Additionally an algorithm will be presented that makes it possible to fairly
+compare different kinds of quorum protocols.
+\end{abstract}
+
+\begin{keywords}
+Structured Quorum-Systems, Replication, One-Copy-Serializability, Concave Hulls
+\end{keywords}
+
+\Section{Introduction}
+Data replication has a long history in computer science.
+Highly available access to a data object is a core problem of computer
+science.
+Relying on a single replica of a data object greatly limits the availability
+of said data.
+Therefore, the next logical step is to increase the number of replicas storing
+the data object.
+This increases the availability of the data object as it can be accessed from
+different replicas.
+Replicating the data object also introduces the need for synchronizing.
+Imagining a data object that is replicated on five replicas as shown in 
+\Rl{fig:fivereplicas}.
+\begin{figure}
+\centering
+	\includestandalone{5replica}
+\caption{Five replicas storing the same data object}
+\label{fig:fivereplicas}
+\end{figure}
+When the data object located on replica \(0\) is overwritten with a new value,
+reading the data object from replica \(4\) will not yield the new value.
+Obviously, that is not the intend behavior.
+An additional problem is that two concurrent write operations can be executed
+on different replicas on the same data object at the same time.
+For example, value \(0\) is written to the data object on replica \(2\) and
+value \(1\) is written to the data object on replica \(3\).
+This begs the question which value is the correct value.
+Both examples show that simple creating multiple replicas of an data
+object will not necessarily lead to the wanted results.
+Usually, the wanted result is that all operations behave as they
+would do on a non-replicated data object but with greater availability.
+More formal, this \emph{non-replicated behaviour} is known as the \g{ocs}
+property \cite{BHG87:ccr}.
+It basically describes that replicated data behaves as non replicated data
+would.
+Meaning, every read operation reads the last written data, only one write
+operation can be executed at any given time, and read and write operation can
+not be executed in parallel.
+
+Algorithm for \emph{mutual exclusion} are closely related to data replication
+protocols that adhere the \g{ocs} property.
+In mutual exclusion, any process that executes an mutual exclusion algorithm
+either is allowed to enter the critical section or not.
+Comparing this with the intersection properties of read and write operations,
+and write and write operation intersection of data replication protocols
+presents an obvious similarity.
+Entering a critical section mutually exclusiv to read, or to modify data, is
+the virtual the same as using read and write operation that create mutual
+exclusion for the duration of its activity.
+
+In this paper we will focus on \gp{qp} that implement this \g{ocs} property.
+Additionally, the evolution and terminology of quorum protocols will
+discussed, as well as different quorum protocols and there characteristics.
+In \Rl{sec:systemmodel} we will introduce the terminology, and the system
+model used.
+Common \gp{qp} and their historical context will be presented in presented
+in \Rl{historicaldevelopmentandcomparision}.
+A generic approach to compare the performance of \gp{qp} is given in
+\Rl{sec:availabilitycomparison}.
+\Rl{sec:conclusion} is concluding this paper.
+
+\Section{System Model}
+To thoroughly discuss different quorum protocols, and the characteristics we
+first need define coherent model.
+A graph-structure \(GS^{D} = (V,E)\) is defined as a two-tuple with a set of vertices \(V\) and
+a set of edges \(E\).
+The \(D\) donates the dimension of the graph-structure.
+When \(D = 2\) it is omitted.
+Edges connect vertices.
+\(V = V(GS)\) donates the set of vertices of a \(GS\).
+\(E = E(GS)\) donates the set of edges of a \(GS\).
+A vertex \(v \in V\) is defined as a tuple \(v = (i,c_1, \dots, c_{D})\), where 
+\(i \in \mathbb{N}\) is the id of the vertex and \(c_1, \dots, c_{D}\) are
+the coordinates of the node in the corresponding dimensions, where the
+coordinates values are natural numbers.
+The shorthand notation \(v_i\) donates a vertex with id \(i\).
+\(|V(GS)|\) represents the number of vertices in a \(GS\).
+
+An \emph{edge} \(e_{i,j} \in E\) is defined as \(e_{i,j} := (v_i, v_j)\), where
+\(v_i, v_j \in V\).
+
+A path \(\langle v_0, v_1, \dots, v_n \rangle\) exists in \(GS^D\) iff:
+\begin{align}
+\forall i &, 0 \le i \le n : \exists\,v_i \in V \text{ and }\\
+\forall i &, 0 \le i < n : \exists e = (v_i,v_{i+1}) \in E 
+\end{align}
+If a path exists, the two nodes \(v_0\) and \(v_n\) are called connected.
+\(\mathbb{V}(\langle v_0, v_1, \dots, v_n \rangle )\) denotes the set of vertices of
+a path such that:
+\begin{align}
+	\mathbb{V}(\langle v_0, v_1, \dots, v_n \rangle ) =& \{v_0, v_1, \dots, v_n\}.
+\end{align}
+\(\mathbb{E}(\langle v_0, v_1, \dots, v_n \rangle )\) denotes the set of the
+edges of a path such that:
+\begin{align}
+	\mathbb{E}(\langle v_0, v_1, \dots, v_n \rangle ) =& \{e_{0,1}\dots, e_{n-1,n}\}.
+\end{align}
+The function \(GS(V',E')\) creates a new graph structure for which:
+\begin{align}
+	V(GS(V',E')) &= V'\\
+	\forall e_{i,j} \in E(GS(V',E')) &: e_i \in V' \land e_j \in V'
+\end{align}
+is true.
+\Paragraph{Data Object}
+A \emph{data object} \(d\) is a single value, its actual value, or data type is of
+no concern.
+It possible to read, and write a data object.
+\(D\) is the set of all \(d\) in a system.
+
+\Paragraph{Replica}
+A replica is a copy of a data object.
+
+\Paragraph{Node}
+A \emph{node} is a logical aggregation between one vertex and zero or more
+replicas.
+
+\paragraph{\Gp{pnt} and \Gp{lnt}}
+A \g{pnt} is the actual network topology that connects the nodes of the quorum
+protocol and transfers their messages.
+The topology can have arbitrary shape and is described by a graph-structure.
+
+A \g{lnt} is a network topology that is put on top of a \g{pnt}.
+They are also described by a \(GS^{D}\).
+As the name indicates, these topologies are only logical and must not be
+homomorph to the underlying \g{pnt}.
+If the \g{lnt} and the \g{pnt} are not homomorph the message complexity given
+for a \g{lnt} can therefore only be an approximation for the actual message
+complexity when using the \g{pnt}.
+
+\Paragraph{One-Copy-Serializability}
+\begin{quote}
+the result of any execution is the same as if the operations of all the
+processors were executed in some sequential order, and the operations of
+each individual processor appear in this sequence in the order specified by
+its program. \cite{Lam79:hmm}
+\end{quote}
+For a formal definition of \g{ocs} please refer to
+\cite{BHG87:ccr,Lam79:hmm}.
+The idea behind \g{ocs} is that read and write operations, and multiple write
+operations are executed mutually exclusive.
+
+\Paragraph{Coterie}
+The concept of coteries was first presented in \cite{Lam78:ird} and later
+reintroduced by \cite{GB85:hav}.
+Let \(R\) be a set of elements.
+A coterie \(C\) is a set of sets of elements for which the following is true:
+\begin{align}
+	\forall G \in C &: G \ne \emptyset \wedge G \subset R \\
+	\forall G,H \in C &: G \ne H \wedge G \cap H \ne \emptyset \\
+	\forall G,H \in C &: G \ne H \wedge G \not\subset H
+\end{align}
+
+\Paragraph{Fully Distributed}
+\Gp{qp} are considered to be fully distributed if no node has a special role or
+is more important as any other node.
+Fully distributed \G{qp} are usually highly available as they are not depended
+on a availability a specific node.
+Single copy systems are the opposite of fully distributed system, as the
+complete system is depended on a single node.
+
+\Paragraph{Access Sites}
+The access sites describe the place from where an operation is started.
+An operation can either be started from inside the \(GS\) used by the \g{qp}
+or from outside the \g{qp}.
+
+\Paragraph{Operation Primitives}
+Most \gp{qp} provide a read and a write operation.
+Some protocols provide a specialized update operation instead of the write
+operation.
+These update operation read, modify the read data, and write the modified data
+in an uninterruptible fashion.
+The modification of the data is usually done by a user supplied function. 
+
+\Paragraph{Operation Availability}
+For the availability calculation it is assumed that all nodes exbibit the same
+level of availability, and that node failure is independent from each other.
+Furthermore, unless stated otherwise, it is assumed that each node holds one
+replica.
+The availability \(\mathbb{A}\) of an operation for a given \g{qp} under a given
+node availability \(p\) is usually, uniquely calculated for that \g{qp}.
+Some \g{qp} have a closed formula for the availability calculation.
+If \(Q\) is a set of all quorums for an operation of a \g{qp}, and these
+quorums upholds the coterie property, the following formula can be used to
+calculate the availability of the operation.
+Where \(N\) is the number of nodes of the \g{qp} which are available with a
+probability \(p\) and \(|q|\) donates the number of nodes of a quorum \(q \in
+Q\).
+\begin{align}
+	\mathbb{A}(p,Q,N) = \sum_{q \in Q} p^{|q|} * (1-|q|)^{(N-|q|)} \label{eq:avail}
+\end{align}
+\Rl{eq:avail}
+This formula only gives information about the operation availability or \g{qp}
+where the \g{pnt} plays no role or is not considered.
+
+\Paragraph{Operation Costs}
+The cost of an operation can be measured in many different ways.
+Some measurements are based on the number of message required to send to
+execute the operation.
+The more common approach is based on counting the number of nodes involved in
+the operation.
+\Rl{eq:cost} presents this cost measurement that allows to compare different
+\g{qp} solely based on the quorums these \g{qp} construct.
+It is again assumed that \(Q\) is a coterie.
+The variables \(q,p\) have the same meaning as in the previous Paragraph.
+\begin{align}
+	\frac{\sum_{q \in Q} p^{|q|} * |q|}{|Q|} \label{eq:cost}
+\end{align}
+The idea behind \Rl{eq:cost} is to weight the cost of each quorum by the
+probability of its availability, and then average the costs of all quorums.
+By costs of an quorum we mean the number of nodes required to construct said
+quorum.
+
+\Paragraph{Discussion}
+The topics Access Sites, \g{lnt}, \g{pnt} and fully distributed are tightly
+coupled.
+If for instance we consider the graph-structure of \Rl{fig:tree} and assume
+that all access must go through node \(0\) the resulting protocol will not be
+fully distributed, as node \(0\) must always be available for any operation to
+executed.
+If we assume that the nodes in \Rl{fig:fivereplicas} are completely connected
+and any operation can be started by any of the nodes the resulting \g{qp} is
+fully distributed.
+So far only the \g{lnt} have been considered.
+Usually, the \g{lnt} used by \gp{qp} are not homomorph to \g{pnt} found in the
+real world.
+Therefore, in order to give a definitive answer about the fully distributed
+property the \g{pnt} has to be considered as well.
+
+\Section{Historical Development and Comparison} \label{historicaldevelopmentandcomparision}
+Quorum Protocols where introduced around the time of the Arpanet.
+In the following different \gp{qp} will be presented and there
+advantages and disadvantages will be discussed.
+
+The most obvious approach to assure \g{ocs} is the \g{rowa} Protocol.
+As the name implies read operation read one node and write operations write
+all nodes.
+The write availability \(a_w(p)\) of the \g{rowa} Protocol, where \(p\) is node
+availability of all \(N\) nodes in the system, is:
+\begin{align}
+	p^{N}
+\end{align}
+and the read availability \(a_r(p)\) is
+\begin{align}
+	1 - (1 - p)^{N}.
+\end{align}
+The read availability of the \g{rowa} Protocol is obviously very good, but the write
+operation is hardly availability for a growing number of nodes.
+
+A modification of the \g{rowa} Protocol is the \g{rowaa} Protocol.
+Here the write operation only has to write the available nodes.
+The \g{rowaa} Protocol does not provide \g{ocs}.
+The write availability of the \g{rowaa} Protocol is \(1\), as writing no nodes
+is always possible.
+
+In \cite{Johnson:1975:MDD:RFC0677} \citeauthor{Johnson:1975:MDD:RFC0677}
+discussed the maintance of a duplicated database.
+The inital concept was extended in \citetitle{Tho79:mca} by
+\citeauthor{Tho79:mca}.
+Compared to later publications about data replication the presented protocol
+is very pratical oriented.
+The publication discusses the implementation of a replicated \g{dbms} in
+detail.
+For example, the authors discusses whether to use daisy chains or broadcasts
+for the communication between the \gp{dbms}.
+The replicated database is replicated among \(N\) \gp{dbms}.
+\Gp{ap} \emph{query} a single \g{dbms} for data.
+In addition to the data the \g{dbms} also returns the timestamp of the data's
+last modification.
+The \g{ap} can modifies the data according to its business logic.
+Then the \g{ap} uses the \emph{update} procedure to write back the modified
+data to a single \g{dbms}.
+The \g{dbms} then requires \(\lceil \frac{N}{2} \rceil\) messages to achieve
+consensus between \(\lceil \frac{N}{2 }\rceil\) \gp{dbms} whether or not to
+accept the update.
+Then an additional \(N-1\) messages are required to inform all \gp{dbms} about
+the acceptance of the update and its corresponding data.
+Finally, the \g{ap} is informed about the acceptance of its update.
+\G{mcs} does not provide \g{ocs}, as reading is permitted while a writing
+operation is in progress.
+Consider the following example.
+A write operation has acquired consensus by the majority of the \gp{dbms}, but
+not all \gp{dbms} have been informed about the modified data.
+A read operation reads the data from an uninformed \g{dbms}.
+After the read operation is finished the \g{dbms} is informed that the data
+was changed even before the read operation was started.
+
+Historically, \g{mcs} has been used differently.
+Usually, no distinction is made between \gp{ap} and \gp{dbms}, they are simply
+combined into nodes.
+Additionally, read operations do not read from a single node, but also from
+the majority of the nodes.
+Thereby, creating the intersection property between every \g{qr} and every
+\g{qw}.
+This version provides \g{ocs}.
+The write availability \(a_w(p)\) of this variant, where \(p\) is node
+availability of all nodes \(N\) in the system, is:
+\begin{align}
+	p^{\lceil \frac{N}{2} \rceil}
+\end{align}
+and the read availability \(a_r(p)\) is
+\begin{align}
+	p^{\frac{N}{2}}.
+\end{align}
+
+\citetitle{Gif79:wvr} was presented in \cite{Gif79:wvr}.
+In this protocol every node has a number of votes assigned to it.
+A read quorum has to collect \(r\) read votes and a write quorum has to select
+\(w\) votes replicas.
+Additionally, \(r + w\) must be greater than the total number of votes \(v\)
+in the system.
+This protocol does enforce that read and write operation are executed mutual
+exclusive, but is does not enforce that two write operations are mutually
+exclusive.
+\begin{theorem}[Weighted Voting Empty Write Quorum Intersection]
+\label{thm:weightedemptyintersect}
+	\(\exists (qw_1,qw_2) : qw_1 \cap qw_2 = \emptyset\)
+\end{theorem}
+\begin{proof}[Proof of \Rl{thm:weightedemptyintersect}]
+	Assume \(N = 5\) replicas \(c_0, \dots, c_4\) each with \(1\) vote.
+	\(r = 4\) and \(w = 2\).
+	\(r + w > N\).
+	\((c_0,c_1) \cap (c_2,c_3) = \emptyset\)
+\end{proof}
+This problem is usually solved by adding an additional requirement to the
+protocol.
+\begin{align}
+	\forall w_1, w_2 : w_1 + w_2 >= N
+\end{align}
+The modified version of the \g{wvp} is very similar to \g{mcs}, but it allows
+to favor nodes with higher availability and it allows to favor read operations
+over write operations or vice versa.
+Actually, consider a system where \(\lceil \frac{N}{2} \rceil\) nodes are
+assigned one write vote and \(\lfloor \frac{N}{2} \rfloor\) nodes are one read
+vote the \g{wvp} behaves equal to the \g{mcs}.
+Actually, the modified \g{wvp} is a superset of the modified \g{mcs}.
+No closing formula for the read and write availability of the \g{wvp} can be
+given, as the vote assignment can be non-uniform across the nodes
+\footnote{Compare \Rl{eq:avail}.}
+Simplifying the vote assignment to one vote per node allows for such a
+formula for a limited number of read- write-vote ratios.
+Limited, because if the number of write votes is less than half of the votes
+\(v\) the resulting system will no longer be \g{ocs} as write quorums must not
+intersect anymore.
+The write availability \(a_w(p)\) of this \g{wvp}, where \(p\) is the
+node availability of all nodes \(N\) in the system, and \(r \in [0.5,1.0)\)
+is the ratio between read and write votes, is:
+\begin{align}
+	p^{\lceil N \times r \rceil}
+\end{align}
+and the read availability \(a_r(p)\) is
+\begin{align}
+	p^{\lceil N \times (1 - r) \rceil}
+\end{align}
+Interestingly for \(\lim_{r\to1.0}\) the modified \g{wvp} is equal to the
+\g{rowa} Protocol.
+
+So far all presented \gp{qp} require no \g{lnt} nor \g{pnt}, implicitly though
+the presented protocols require that there nodes are part of a complete graph.
+The requirement of a complete graph as a quasi \g{lnt} becomes especially
+problematic as shown in \Rl{sec:availabilitycomparison}.
+
+The \(\sqrt{N}\) Mutual Exclusion Algorithm was presented in \cite{Mae85:ame}.
+As discussed earlier, algorithm for mutual exclusion can often be used for data
+replication purposes.
+It is called \(\sqrt{N}\) Mutual Exclusion Algorithm as it requires to lock
+\(\sqrt{N}\) nodes to obtain mutual exclusion.
+The idea behind the algorithm is based on finite projection planes
+\cite{AARS:ProjectionPlane}.
+If there is a prime \(k\) such that:
+\begin{align}
+	N &= k^2 + k + 1 \label{eq:nsqrtk}
+\end{align}
+there exists a set called \(D\) of \(N\) paths for which
+\begin{align}
+	\forall a,b &\in D : |\mathbb{V}(a)| = |\mathbb{V}(b)| \label{eq:nsqrtequal}\\
+	\forall a,b &\in D : \mathbb{V}(a) \cap \mathbb{V}{(b)} \ne \emptyset \label{eq:nsqrt}
+\end{align}
+is true.
+Each path can be used as a read or write quorum.
+\Rl{fig:nsqrt} shows an example for the \(\sqrt{N}\) Algorithm with seven
+nodes.
+The read and write quorums consists of all the nodes on one of the straight
+paths or the circle.
+For all \(N\) such that there is no \(k\) for which \Rl{eq:nsqrtk} holds,
+degenerated sets can be created.
+Degenerated in the sense that some sets hold more elements than other.
+In other works \Rl{eq:nsqrtequal} is no longer true.
+Approximating rounding errors the average set size in \(D\) for any number of
+\(N\) will be \(\approx \sqrt{N}\) hence the name of the algorithm.
+The graph in \Rl{fig:nsqrt} is also called a \emph{fano plane} or visual
+representation of a \emph{Steiner System} \cite{assmus93steiner,Manivel06fano}.
+
+The \citetitle{AA90:tqp} uses a logical tree structure to optimize the
+availability of the write operation of the \g{rowa} Protocol \cite{AA90:tqp}.
+The nodes used by the protocol are arranged in a tree as shown in
+\Rl{fig:tree}.
+\begin{figure}
+	\includestandalone{tree}	
+	\caption{Logical tree structure used by the \emph{Tree Quorum Protocol} and
+	the \emph{Generalized Tree Quorum Protocol}.}
+\label{fig:tree}
+\end{figure}
+The \g{tqp} requires that the write operation writes a \g{qw} that consists of
+the root, a majority of its children, and a majority of their children, and so
+forth.
+The read operation has to read the majority of all nodes at a single level of
+the tree.
+Considering the tree in \Rl{fig:tree} a valid \g{qw} would be
+\(\{0,1,3,4,9,10\}\).
+At least for the write operation the protocol is not fully distributed, as it
+always requires the root node to be present.
+Again considering the tree in \Rl{fig:tree} a valid \g{qr} would be
+\(\{1,2\}\).
+The \g{tqp} had the premise to improve the \g{rowa} Protocol.
+It achieves this goal but only for a limited amount of nodes.
+As it is always required that the root node is part of a \g{qw}, the
+availability of this node is the limiting factor for the write availability.
+Therefore, for a system with \(\lim_{|N| \to \infty}\) the write
+availability will eventually be \(0\) as long as the individual node
+availability \(p \ne 1\).
+As the concept of data replication was introduced because the node
+availability was \(< 1\), this is trivially true.
+
+The \g{tqp} was refined into the \citetitle{AA92:gtqp} \cite{AA92:gtqp}.
+The difference in comparison to the \g{tqp} is the modified construction of
+\gp{qr}.
+Instead of requiring the majority of a single level, a \g{qr} in the
+\g{gtqp} is required to consists of the majority of a level where an element
+of a level can also be replaced by the majority of its children on the next
+level.
+A valid \g{qr} for the \g{gtqp} in the tree in \Rl{fig:tree} is \(\{1,6,8\}\).
+The requirements for the \gp{qw} are unchanged in comparison to the \g{tqp}.
+
+\emph{Multidimentional Voting} is an generalisation of the voting protocol.
+It was introduced in \cite{AA91:mdv,CAA90:mdv}.
+The idea behind Multidimentional Voting is that every node has a fixed number
+of votes not on a single dimension but on multiple dimensions. 
+In order to execute an operation a quorum has to be found for a number of
+\(l\) dimension.
+\begin{table}
+\begin{tabular}{l l l l l l l l }
+	& \rotatebox{90}{Dimension 1} & 
+	\rotatebox{90}{Dimension 2} & 
+	\rotatebox{90}{Dimension 3} & 
+	\rotatebox{90}{Dimension 4} & & \\
+	\textbf{Node 1} & \vrule 2 & 0 & 2 & 2 \vrule&  2 0 2 2 & \(\leftarrow\)selected Node \\
+	        Node 2  & \vrule 3 & 1 & 0 & 0 \vrule&          & \\
+	\textbf{Node 3} & \vrule 0 & 1 & 0 & 2 \vrule&  0 1 0 2 & \(\leftarrow\)selected Node \\
+	\textbf{Node 4} & \vrule 1 & 0 & 1 & 1 \vrule&  1 0 1 1 & \(\leftarrow\)selected Node \\
+	        Node 5  & \vrule 1 & 0 & 1 & 1 \vrule&          & \\
+	        Node 6  & \vrule 0 & 1 & 2 & 0 \vrule&          & \\\cmidrule{6-6}
+					& \multicolumn{4}{c}{Vote Vector} &  3 1 3 5 & sum of votes per dimension \\
+		   	        &          &   &   &         &  5 3 5 5 & quorum requirements \\\cmidrule{6-6}
+		   	        &          &   &   &         &  0 0 0 1 & vector of valid dimension
+\end{tabular}
+	\caption{Example of Multidimentioanl Voting as presented in \cite{AA91:mdv,CAA90:mdv}.}
+	\label{tab:multidimvoting}
+\end{table}
+Considering the example in \Rl{tab:multidimvoting} and a Multidimvoting Voting
+Protocol \(MD(l,k)\) with \(\mathit{l} = 1\) and \(k = 4\) we will shortly
+discuss its operation.
+\(\mathit{l}\) defines the number of dimensions where a valid quorum must be
+found and \(k\) defines the number of dimensions of the voting vector.
+The example given finds the fours dimension as a suitable voting dimension, and
+as \(\mathit{i} = 1\) that is enough to execute the operation.
+The challenge with the Multidimentional Voting Protocol is the assignment of
+the votes and the quorum requirements.
+The votes have to be assigned in such a way that all valid quorum
+have an intersection with all other valid quorums over all dimensions.
+
+The \emph{\G{mlq}} was introduced in \cite{AA91:mdv,FKT91:dml}.
+A similar approach was presented by \citeauthor{Kum90:pah} in
+\cite{Kum90:pah,Kum91:hqc}.
+\begin{figure}
+	\includestandalone[width=0.48\textwidth]{multilevel}	
+	\caption{An example for a Multi-Level Replication Management Protocol.}
+	\label{fig:multilevel}
+\end{figure}
+The idea behind the \g{mlq} is to aggregate existing nodes into
+logical group.
+And then use these logical to execute an arbitrary \g{qp}.
+Furthermore, these logical groups are then grouped again on the next logical
+level and so forth until the root level is reached.
+Obviously, the \g{mlq} works on \gp{lnt}.
+As an example consider \Rl{fig:multilevel}.
+Nine physical nodes are group into three \g{mcs} strategies, which are in turn
+grouped into a \g{rowa} strategy.
+When an operation is executed on this \g{mlq} the operations starts at the
+level 0 \g{rowa} strategy.
+A read operation has to read one logical node of level 1.
+Simply because \g{rowa} requires to read one node.
+Every logical node at level 1 is implemented by the \g{mcs} strategy.
+Therefore, one logical node at level 1 has to read the majority of its
+children at level 2.
+A write operation again has to start at level 0.
+As level 0 is implemented by the \g{rowa} Protocol all logical nodes of level
+1 have to be written.
+As the logical nodes of level 1 are implemented by the \g{mcs} strategy they
+only have to write the majority of there children at level 2.
+Instead of writing all nine node, the \g{mlq} only requires to write six
+nodes, reading on the other hand now requires two nodes instead of one.
+The \g{mlq} approach is very flexible as it allows to assign different data
+replication protocol to every logical node.
+Additionally, the number of children associated very every logical node can
+vary.
+As such, the costs and the availability of the operations have to be computed
+individually for each \g{mlq} instantiation.
+In \cite{Kum91:hqc} it is shown that the read and write costs for some of the
+hierarchical structures can be as good as \(N^{0.63}\).
+
+The \g{gp} was presented in \cite{Kum90:pah} by \citeauthor{Kum90:pah}.
+A grid used by the \g{gp} is shown in \Rl{fig:grid}.
+In the general case the grid has to be considered a \g{lnt}, as regular grid
+structures are rarely found in real-world networks.
+\Gp{qr} are constructed by selecting one node of each column.
+For a grid with \(R\) rows and \(C\) column the read availability \(a_r(p)\)
+is:
+\begin{align}
+	(1 - (1 -p)^C)^R
+\end{align}
+The read costs for the \g{gp} is equal to the number of column.
+As an example for a valid \g{qr} for the \g{gp} in \Rl{fig:grid} consider the
+nodes \(\{4,9,2,15\}\).
+\Gp{qw} are constructed by selecting one node of each column and one complete
+column.
+\begin{figure}
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=\linewidth]{grid}	
+		\caption{Logical Grid structure used by the \emph{Grid Protocol}.}
+		\label{fig:grid}
+	\end{subfigure} ~
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=\linewidth]{lattice}	
+		\caption{Logical triangular Lattice structure used by the \emph{Triangular Lattice Protocol}.}
+		\label{fig:lattice}
+	\end{subfigure}
+	\caption{Grid based \g{lnt}.}
+\end{figure}
+A corresponding \g{qw} to the previous given \g{qr} for the Grid Protocol is
+\(\{12,1,2,7,11,15\}\).
+The nodes of the \g{qr} and the nodes of the \g{qw} of this example intersect
+in node with id \(15\).
+The write availability \(a_w(p)\) of the \g{gp} is:
+\begin{align}
+	(1 - (1 - p)^C)^R - (1 - p^C - (1 - p)^C)^R
+\end{align}
+The write costs for the \g{gp} is equal to \(C+R-1\).
+
+The Grid Protocol was extended into the \emph{\g{tl}} \cite{WB92:tlp}.
+The \g{tl} uses a \g{lnt} as shown in \Rl{fig:lattice}.
+Considering the \g{lnt} used by the \g{gp} and the \g{lnt} used by the \g{tl}
+the relation is obvious.
+Every \g{qr} consists of a vertical or horizontal path through the \g{lnt}.
+Every \g{qw} consists of a vertical and horizontal path through the \g{lnt}.
+Such a protocol could also leverage \gp{lnt} as shown in \Rl{fig:grid}, the
+additional edges forming the triangular lattice are an optimisation.
+The diagonal connecting the nodes \({0,5,10,15}\) creates an minimal path that
+crosses the \g{lnt} vertically and horizontally.
+Therefore, as long as the \g{lnt} used by the \g{tl} is based on an \(M \times
+M\) grid the optimal \g{qw} and \g{qr} will consists of \(M\) nodes.
+As quorums for the \g{tl} are created by finding paths through a \g{lnt}, no
+closed formula exists that calculates the read and write availability.
+\Rl{fig:tlrea} shows the read and write availability of the \g{tl} by applying
+the \Rl{eq:avail} on the \g{lnt} in \Rl{fig:lattice}.
+\begin{figure}[b]
+	\hspace{-10mm}%
+	\includegraphics[width=1.2\linewidth]{tl_avail}
+	\caption{\G{tl} Read and Write Availability with 16 Nodes.}
+	\label{fig:tlrea}
+\end{figure}
+Both the \g{gp} and the \g{tl} face a similar problem.
+The are only well defined if the number of nodes is \(N = M \times U\) where
+\(M,U\) are the number of nodes per dimension.
+As an example consider the \g{gp} and the \g{lnt} in \Rl{fig:grid} only
+consisting of \(15\) nodes.
+One row and column will never be complete, making the other nodes of that row
+and column more important.
+They are more important as now there is only a one in three chance to find a
+available node in that column to construct a \g{qr}.
+In all other columns the chance is one in four.
+This change transforms the \g{gp} as well as the \g{tl} from a fully
+distributed protocol to a not fully distributed protocol.
+
+In \cite{The93:diss} an approach was presented to construct grid quorum
+protocol to met certain read and write availabilities.
+
+The \g{cw} was presented in \cite{PW94:cw:TR,PW97:acw}.
+It uses a irregular grid like structure as shown in \Rl{fig:wall}.
+\begin{figure}
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=\linewidth]{wall}	
+		\caption{A \g{lnt} used by the Crumbling Wall Protocol.}
+		\label{fig:irregularwall}
+	\end{subfigure} ~
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=\linewidth]{logwall}	
+		\caption{A logarithmic \g{lnt} used by the Crumbling Wall Protocol.}
+		\label{fig:logwall}
+	\end{subfigure}
+	\caption{\Gp{lnt} used by the Crumbling Wall Protocol.}
+	\label{fig:wall}
+\end{figure}
+The \g{cw} has one kind of quorum, it is constructed by creating the union of
+all nodes from one row and one node from all rows below.
+As an example for the intersection property of the \g{cw} consider the graph
+in \Rl{fig:irregularwall} and the two sets of nodes \(\{11,12,14\}\),
+\(\{4,5,6,7,12,13\}\).
+It is not a fully distributed \g{qp} as the nodes of the lower rows are
+required more often than the nodes of the upper rows.
+In \cite{PW97:acw}, the authors of the Crumbling Walls Protocol
+even show that a logarithmic wall as shown in \Rl{fig:logwall} is the only
+highly available wall.
+As such it is clear that the read and write availability is depended the wall
+used.
+
+\emph{The Wheel Quorum Consensus Protocol} was presented in
+\cite{pa:2014:novel}.
+The Wheel Quorum Consensus Protocol is a \g{rfwm} protocol.
+The idea with that is that the amount of read operations dominates the amount
+of write operations by an order of magnitude.
+That means that read operations will require fewer nodes to create a valid
+quorum than write operations.
+As the protocol favors read operations over write operations, it aims to
+decrease the read quorum size compared to protocols that do not favor a
+specific operations.
+\begin{figure}[ht]
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=0.98\textwidth]{wheel}
+		\caption{A \g{lnt} used by the \g{wqp}.}
+		\label{fig:wheel}
+	\end{subfigure}
+	\begin{subfigure}[t]{0.48\linewidth}
+		\includestandalone[width=0.98\textwidth]{steiner}	
+		\caption{A representation of the sets used by the \(\sqrt{N}\) Algorithm
+			to reach mutual exclusion.}
+		\label{fig:nsqrt}
+	\end{subfigure}
+	\caption{}
+\end{figure}
+\Rl{fig:wheel} shows the \g{lnt} used by the \g{wqp}.
+The node in the middle is called the \emph{HUB}.
+A \g{qr} will always only consist of the HUB node.
+So in the case that the HUB node is available the read costs will be \(1\).
+A \g{qw} consists of the majority of the nodes of the system and the HUB node.
+As an example for the intersection property of \g{wqp} consider the
+\g{qr} \(\{0\}\) and a \g{qw} \(\{0,1,2,3,4,5\}\) in the graph in
+\Rl{fig:wheel}.
+The \g{wqp} is obviously not fully distributed as all quorums require
+the HUB node.
+Thereby the availability of the read operation is equal to the availability of
+the HUB node, and the availability of the write operation is always less than
+the availability of the HUB node.
+The HUB node is a single point of failure that undermines the idea of data
+replication.
+To correct this problem, the \g{wqp} elects a new HUB whenever its load
+reaches a certain threshold or when the HUB is not availability.
+As described in \cite{pa:2014:novel} a new HUB is elected by randomly
+selecting two adjacency nodes and promoting the one with the most current
+value to be the new HUB.
+\begin{theorem}[The \g{wqp} is not \g{ocs}]
+\label{thm:wheelprotocolisnotocs}
+One property of \g{ocs} is that always the last written data is read.
+Formally this can be expressed that their is always an intersection between
+any \g{qw} and any \g{qr}.
+\begin{align}
+	\forall q_r, q_w : q_r \in QR \wedge q_w \in QW \wedge q_r \cap q_w \ne
+	\emptyset
+\end{align}
+\end{theorem}
+\begin{proof}[Proof of \Rl{thm:wheelprotocolisnotocs}]
+Consider the wheel in \Rl{fig:wheel}.
+\begin{enumerate}
+	\item A \g{qw} writes the nodes \(\{0,1,2,3,4,5\}\).
+	\item A new HUB gets elected from the two adjacency nodes \(7,8\).
+	\item Node \(7\) is selected as new HUB.
+	\item As required by the protocol the HUB is read.
+\end{enumerate}
+Obviously the read quorum does not intersect with the previously used write
+quorum.
+Therefore, the \g{ocs} property is not upheld by the \g{wqp}.
+\end{proof}
+Considering \Rl{thm:wheelprotocolisnotocs} the read operation costs of the
+\g{wqp} is obviously not \(1\).
+The selection of a viable new HUB requires at least the majority of all nodes
+to produce an intersection with every possible \g{qw}.
+
+In \cite{CJ98:tgp} and \cite{ChoW98} the authors presented a \g{qp} that works
+on a \gp{lnt} with a triangular grid shape as shown in \Rl{fig:trigrid}.
+\begin{figure}[ht]
+\centering
+	\includestandalone{trigrid}
+	\caption{A \g{lnt} useable by the Triangular Grid Protocol}
+\label{fig:trigrid}
+\end{figure}
+The protocol categorises nodes into three sets called \emph{inner nodes},
+\emph{boundary nodes}, and \emph{corner nodes}.
+There are three sets of boundary nodes the left boundary, the right boundary,
+and the bottom boundary.
+Corner nodes are nodes that are part of two boundary sets, for example node
+number one in the graph shown in \Rl{fig:trigrid}.
+Inner nodes are nodes that are not part of the boundary of the graph.
+\G{qr} and \g{qw} use the same quorums.
+A quorum for the Triangle Quorum Protocol must be a set of nodes who are connected
+by the nodes of the set and have at least one node on each of the three
+boundaries.
+Two valid quorums for the graph in \Rl{fig:trigrid} are \(\{3,4,8,13,14\}\)
+and \(\{6,7,8,9,14\}\).
+These two quorums show the intersection property of the Triangle Quorum
+Protocol.
+An optimal quorum for the Triangle Quorum Protocol is a set that only consists
+of all nodes of one boundary.
+
+The \g{dsp} was presented in \cite{SKB04:mdq}
+\cite{kuag:ggqcrcp:2011, KumarMUGQ:11} it is a \g{qp} that works with \g{lnt}
+of arbitrary dimension.
+The \g{dsp} is a \g{rfwm} protocol.
+Such a \g{lnt} for the 3-dimensional case can be seen in \Rl{fig:dspace}.
+Considering the \g{lnt} in \Rl{fig:dspace2} a valid \g{qw} for the \g{dsp}
+would be a complete plane in combination with a right-angled line.
+Again considering \Rl{fig:dspace2}, a \g{qr} consists of all nodes on a line.
+\begin{figure*}[ht]
+	\begin{subfigure}[t]{0.48\linewidth}
+	\centering
+	\includestandalone[width=0.7\textwidth]{twotimestwofigure}
+	\caption{A 3-dimensional \g{lnt} used by the D-Space Quorum Protocol}
+	\label{fig:dspace}
+	\end{subfigure}%
+	\begin{subfigure}[t]{0.48\linewidth}
+	\centering
+	\includestandalone[width=0.7\textwidth]{planeline}
+	\caption{A 3-dimensional \g{lnt} used by the D-Space Quorum Protocol}
+	\label{fig:dspace2}
+	\end{subfigure}
+	\caption{Different views on the same \g{lnt} used by \g{dsp}.}
+\end{figure*}
+The \g{dsp} allows for another way of creating \gp{qw}.
+This way can be see in \Rl{fig:dspace}.
+Instead of writing a complete plane and a line the quorum can consists of the
+nodes of a hyperplane of the \g{lnt} \cite{beutelspacher1998projective}.
+A hyperplane is created by compressing the read line axis of the 3-dimensional
+space into a 2-dimensional plane.
+This joins all nodes which share the same coordinates on the uncompressed
+axes.
+If the complete plane is then covered by available nodes, viewed from the read
+line axis, the write operation is available.
+The \g{qp} in \citetitle{kuag:ggqcrcp:2011} and \citetitle{KumarMUGQ:11} based
+on the \g{dsp}.
+
+In \cite{RS13:NDS} and \cite{rt2015} the authors presented a quorum
+protocols based on \g{tl} that work on arbitrary planar graphs.
+The idea behind the \emph{Crossing Protocol} is to create intersecting paths
+that completely cross (or: partitions) a given \g{pnt} vertically and/or
+horizontally. 
+These paths are called \emph{crossings}.
+The nodes of the crossings are used as quorums in the Crossing Protocol.
+\Gp{qr} have to cross the \g{pnt} vertically or horizontally. 
+\Gp{qw} have to cross the \g{pnt} vertically and horizontally. 
+Before vertical or horizontal crossing can be defined four boundary sets have
+to be defined.
+These four sets can be tailored to the given topology and the given
+availability requirements.
+The sets are called Top (T), Bottom (B), Left (L), and Right (R) set and must
+adhere to the following criteria.
+\begin{align}
+U \in \{T,B,L,R\} &: U \ne \emptyset \label{eq:tblr} \\
+\forall v,v' \in U &: \mathbb{V}(\langle v, \dots, v' \rangle) \subset U\\
+T \cap L \ne \emptyset &\land \label{eq:tcaplnotempty}
+T \cap R \ne \emptyset \\
+B \cap L \ne \emptyset &\land
+B \cap R \ne \emptyset \\
+T \cap B = \emptyset &\land
+L \cap R = \emptyset \label{eq:bcaprnotempty}
+\end{align}
+Consider the graph in \Rl{fig:crossing} let \(B = \{0,1,12\}\), \(T =
+\{15,9,3,6\}\), \(L = \{0,2,15\}\), and \(R = \{6,5,8,12\}\) a valid \g{qr}
+would be \(\{0,5,13,7,5\}\) and a valid \g{qw} would be
+\(\{15,9,3,6,7,11,14,1\}\).
+\begin{figure}
+\centering
+	\includestandalone{crossing}
+	\caption{A \g{pnt} useable by the \citetitle{RS13:NDS} and
+	\citetitle{rt2015} Quorum Protocol}
+	\label{fig:crossing}
+\end{figure}
+The read and write availability of the Crossing Protocol is solely depended on
+the graph structure it is applied to.
+
+\Section{Availability Comparison}
+\begin{figure*}[t]
+	\centering
+	\includestandalone{mapping}
+\caption{A graphical representation of the mapping \(M(G,G^{'}) = \{(0,12)\), \((1,8)\), \((2,5)\), 
+\((3,6)\), \((4,14)\), \((5,11)\), \((6,7)\), \((7,3)\), \((8,0)\), \((9,2)\), \((10,10)\), 
+\((11,9)\), \((12,1)\), \((13,13)\), \((14,4)\), \((15,15)\}\) required by the
+\g{tl} to work on the shown \g{pnt}.}
+\label{fig:mapping}
+\end{figure*}
+As discussed earlier, existing \gp{sqp} are usually limited
+to a specific \g{lnt}, and are therefore not applicable to \gp{pnt} in the
+general case.
+In order to usefully and fairly compare \gp{sqp} with each other these
+protocols have to analyzed when they are mapped to an identical \g{pnt}.
+A generic approach to apply these protocols to any \g{pnt} is to map the
+nodes of a protocol's \g{lnt} to the nodes of the \g{pnt}.
+
+None of the presented \gp{qp} have such a mapping feature, nor could such a
+mapping algorithm be identified in the literature.
+As such an algorithm is mandatory for a useful comparison between any
+\gp{sqp}, that do not share a \g{lnt} or \g{pnt}, such an algorithm is
+presented below.
+
+\Subsection{The Mapping Approach}
+A mapping is a bijection from one graph-structure to another one. 
+This requires that the number of nodes in the codomain structure is at least
+equal to the number of the nodes of the original structure.
+Formally, a mapping \(M(GS,GS')\) from \(GS\) to \(GS'\) is defined as:
+\begin{align}
+M(GS,GS') &= \{ (v_1,v_1'), \dots (v_n,v_{n}') \} \label{eq:injection1} \\ 
+\forall (v,v') \in M &: v \in V, v' \in V'\\
+\forall (v,v'),(v,v'') &: v' = v''\\
+\forall (v',v),(v'',v) &: v' = v'' \label{eq:injection2}
+\end{align}
+The (\Rl{eq:injection1}) -- (\Rl{eq:injection2}) define every
+node \(v\) of graph \(G\) is uniquely mapped to a node \(v'\) of graph \(G'\). 
+
+In order to apply \gp{sqp} to arbitrary topologies, either
+their \g{lnt} must match the \g{pnt} or the nodes of the \g{lnt} have to
+be mapped to the \g{pnt}.
+As it is highly unlikely that the \g{lnt} matches the \g{pnt}, mapping the
+nodes often becomes a necessity.
+As an example, consider the \g{lnt} in \Rl{fig:lattice} used by the
+\g{tl} and the \g{pnt} presented in \Rl{fig:crossing}.
+Obviously, the topologies are different.
+Therefore, if the \g{tl} is to be used on the graph in \Rl{fig:crossing} a
+mapping is required.
+When a mapping is created, the executed \g{sqp} works its \g{pnt}.
+For every node selected from the \g{lnt} the mapping selects the mapped node
+of the \g{pnt}.
+Connections between two or more nodes of the \g{lnt} are recreated with the
+nodes of the \g{pnt}.
+As mappings are usually not between homomorph graph-structures the length of
+recreated connections may differ from the original connection. 
+The cost and availability analysis of a mapped protocol therefore has to
+consider the nodes required on the \g{pnt} level.
+Having mappings that require little additional nodes on the \g{pnt} level in
+relation to the \g{lnt} level is therefore a desired goal, as thus the
+expected cost and availability characteristics of the \g{sqp} can be traced
+the closest.
+Consequently, the next question is how to create good or even optimal
+mappings.
+
+Before we can find a good or optimal mapping we have to derive a measurement
+criteria for mappings.
+First we have to reconsider \Rl{eq:avail}. 
+We see that the different quorums are valued differently in relation to their
+probability of occurrence.
+Additionally, some \g{sqp} have special quorums that have higher precedence as
+they are cheater to construct and/or have a higher availability.
+That means depending on the expected probability of the individual nodes
+different parts of a mapping have a different amount of influence on the
+resulting availability.
+In other words, the ranking of mappings is depended on the assumed
+availability of the nodes.
+
+As an example for a hand-optimized mapping from the graph structure \(GS\) in
+\Rl{fig:lattice} to the graph structure \(GS^{'}\) in \Rl{fig:crossing}
+consider \(M(GS,GS^{'}) = \):
+\(\{(0,12),\) \((1,8),\) \((2,5),\) \((3,6),\) \((4,14),\) \((5,11),\)
+\((6,7),\) \((7,3),\) \((8,0),\) \((9,2),\) \((10,10),\) \((11,9),\)
+\((12,1),\) \((13,13),\) \((14,4),\) \((15,15)\}\).
+This mapping can be seen in \Rl{fig:mapping}.
+Obviously, such a manual approach is not feasible in the general case.
+
+Considering the displayed mapping allows us to gain a deeper understanding of
+the mapping process.
+Imagine the \g{tl} yields the diagonal as a \g{qw} consisting of the nodes
+\(\{0,5,10,15\}\). 
+The nodes of the diagonal get mapped to the nodes \(\{12,11,10,15\}\).
+In the \g{lnt} the four nodes where connect by three edges.
+In the \g{pnt} none of the four mapped nodes are directly connected.
+As mentioned earlier, one assumption of \g{sqp} is that nodes connected in the
+\g{lnt} can directly exchange messages between each other.
+This communication is required to propagate the data that is to be read and
+written.
+When mapped, previously directly connected nodes may now require additionally
+nodes to be reconnected.
+Therefore, additional nodes may be required to propagate messages between
+nodes of the selected quorum.
+The smallest set of nodes reconnecting the original diagonal \g{qw} in the
+\g{pnt} is \(\{15,9,10,13,11,14,12\}\) \footnote{Other reconnecting sets with
+seven nodes exists. Choosing them over the selected reconnecting set will not
+change the argument.}.
+Now it is fairly obvious why the \g{pnt} has to be considered in the
+availability analysis.
+The availability of the original four node quorum is \(q^{4}\).
+The availability of the actual connected seven node quorum is \(q^{7}\).
+As \(p \text{ is}\in [0,1)\) the availability of the actual \g{qw} will be
+lower than the availability promised by the \g{tl}.
+
+\Subsection{Optimal Mapping}
+Below we will present an algorithm that finds the optimal mapping for a
+uniform node availability probability range from \(min\) to \(max\) where \(0
+\le min \le max < 1\).
+Optimal in this case means, the mapping where the integral for a given \g{qp},
+between min and max, is the highest.
+One part of this algorithm is the reconnecting of nodes of a quorum.
+In \Rl{alg:connectnodes} a procedure is given that will find the smallest
+subset of nodes of the given \g{pnt} to connected a given set of nodes.
+\(\frak{P}(s)\) computes all unique subsets of \(s\), and is known as the
+\emph{Power Set} \cite{devlin1979fundamentalsset}.
+\begin{algorithm}[h]
+\caption{Algorithm to connect nodes.}
+\label{alg:connectnodes}
+\begin{algorithmic}[1]
+\Procedure{AreNodesConnected}{$nodes, GS$}
+	\State
+	\Return \(\forall n,n' \in nodes : \exists \langle n, \dots, n' \rangle \in GS\)
+\EndProcedure
+\State
+\Procedure{FindSmallest}{$nodesToConnect, GS$}
+	\State \# all subsets of nodes including $nodesToConnect$
+	\State subsets $\leftarrow$ $\frak{P}(\mathcal{V}(GS) \cap nodes)$
+	\State smallest $\leftarrow$ $V(GS)$
+	\ForAll{$i \in subsets$}
+		\If{AreNodesConnected(\par
+			\hskip\algorithmicindent\hskip\algorithmicindent nodesToConnect, GS(i,E(GS))\par
+			\hskip\algorithmicindent) $\land$ $|i| \le |smallest|$\par
+			\hskip\algorithmicindent}
+			\State smallest $\leftarrow$ i
+		\EndIf
+	\EndFor
+	\State
+	\Return smallest
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+The procedure \texttt{FindSmalles} works as follows.
+It iterates all possible subsets of \(V(GS)\) which are containing the node to
+connect.
+For each of these subsets it is tested if their is a path connecting each
+element to every other element.
+The subset with the fewest number of nodes for which that property is true is
+the smallest reconnecting subset of nodes.
+\begin{algorithm}[h]
+\caption{Algorithm to find optimal mapping.}
+\label{alg:optimalmapping}
+\begin{algorithmic}[1]
+\Procedure{Permutations}{$tup$}
+	\State
+	\Return all possible permutations of the elements of tuple \(tup\)
+\EndProcedure
+\State
+\Procedure{Func}{$protocol$,$lnt$,$i$,$p$}
+	\State result \(\leftarrow\) 0.0
+	\State mapping \(\leftarrow\) \(M(lnt,i)\)
+	\State pntGS \(\leftarrow\) \(G(lnt,M)\)
+	\ForAll{\(q \in protocol(lnt)\)}
+		\State \(a\) \(\leftarrow\) \texttt{FindSmallest(q,pntGS)}
+		\State \(result \leftarrow result + p^{|a|} * (1 - |a|)^{V(pntGS) - |a|}\)
+	\EndFor
+	\State
+	\Return result
+\EndProcedure
+\State
+\Procedure{OptMapping}{$protocol$,$lnt$,$pnt$,$min$,$max$}
+	\State \# \(\mathcal{T}(V)\) is a function that creates a 
+	\State \# tuple of the elements of \(V\) such that these element 
+	\State \# are ordered by their id.
+	\State
+	\State \(optMapping \leftarrow\) empty tuple
+	\State \(intOptMapping \leftarrow 0.0\)
+	\ForAll{\(i \in Permutations(pnt)\)}
+		\State \(tmp \leftarrow \int_{min}^{max} Func(protocol,lnt,i,x) dx\)
+		\State
+		\If{\(tmp > intOptMapping\)}
+			\State optMapping \(\leftarrow i\) 
+			\State intOptMapping \(\leftarrow tmp\) 
+		\EndIf
+	\EndFor
+	\State
+	\Return (optMapping,intOptMapping)
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+Being able to find the smallest subsets of nodes of a \g{pnt} that reconnects
+a quorum created on a \g{lnt}, allows us to determine the optimal mapping from
+any replica protocol using any \g{lnt} on every \g{pnt}.
+This process is shown in \Rl{alg:optimalmapping}.
+The idea behind the procedure \texttt{OptMapping} is to iterate all possible
+mappings from the \g{lnt} to the \g{pnt} and then iterate all quorums of the
+\g{qp}.
+For each mapping, quorum the smallest reconnection set is computed and this is
+then used to calculate the availability of the quorum when mapped to the
+\g{pnt}.
+The next step is compute the integral where the availability \(q\) serves as
+the variable of integration.
+For practical reasons this step can be approximated by iterating \(q\) in very
+small steps (e.g. 0.0.1) between \(min\) and  \(max\).
+The mapping with the highest integral value, for a given \g{qp} with a given
+node availabilities between \(min,max\), is the optimal mapping.
+Comparing the integral values of \gp{qp}, optimally mapped to the same
+\g{pnt}, allows for a fair and useful comparison.
+
+\Section{Conclusion}
+In this paper we presented and discussed key properties of quorum systems used
+for data replication.
+Then we used these properties to analyse historically relevant quorum
+protocols.
+We discussed existing misconceptions and showed remaining difficulties.
+In order to correctly compare quorum protocols that use \glsfirst{lnt} and
+quorum protocols that use \glsfirst{pnt}, we developed and presented the
+algorithms in \Rl{sec:optimalmapping}.
+
+No quorum protocol in more than 30 years has shown to be the right choice
+for every given use scenario.
+
+A possible next step in the analysis of quorum protocol is to consider faulty
+communication, and to consider nodes that have different availabilities.
+This would create analysis that are more realistic and most likely to the
+development of new quorum protocols that will try to benefit from the increase
+of information.
+Unfortunately, these analysis exhibit high complexity as they usually require
+to iterate all possible combinations of some specific attribute.
+\printbibliography
+\end{document}

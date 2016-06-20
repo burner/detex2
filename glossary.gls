@@ -1,0 +1,30 @@
+\newacronym{rowa}{ROWA}{Read-One/Write-All}
+\newacronym{rowaa}{ROWAA}{Read-One/Write-All Available}
+\newacronym{wv}{WV}{Weighted Voting}
+\newacronym{mcs}{MCS}{Majority Consensus}
+\newacronym{mlq}{MLQ}{Multi Level Quorum Schema}
+\newacronym{ocs}{1SR}{one-copy serializability}
+\newacronym{mlv}{MLV}{Multi Level Voting}
+\newacronym{tl}{TLP}{Triangle Lattice Protocol}
+\newacronym{gp}{GP}{Grid Protocol}
+\newacronym{tqp}{TQP}{Tree Quorum Protocol}
+\newacronym{gtqp}{GTQP}{Generalized Tree Quorum Protocol}
+\newacronym{mc}{MC}{MidCir}
+\newacronym{qw}{WQ}{write quorum}
+\newacronym{qr}{RQ}{read quorum}
+\newacronym{ll}{LL}{logical level}
+\newacronym[longplural={physical network topologies}]{pnt}{PNT}{physical network topology}
+\newacronym[longplural={logical topologies}]{lt}{LT}{logical topology}
+\newacronym[longplural={logical network topologies}]{lnt}{LNT}{logical network topology}
+\newacronym{uqp}{UQP}{unstructured quorum protocol}
+\newacronym{sqp}{SQP}{structured quorum protocol}
+\newacronym{fns}{FNS}{Factorial Number System}
+\newacronym{qp}{QP}{quorum protocol}
+\newacronym{npc}{NPC}{node placement combination}
+\newacronym{dbms}{DBMS}{database management system}
+\newacronym{ap}{AP}{application process}
+\newacronym{cw}{CWP}{Crumbling Wall Protocol}
+\newacronym{dsp}{DSP}{D-Space Quorum Protocol}
+\newacronym{rfwm}{RFWM}{read-few write-many}
+\newacronym{wqp}{WQP}{Wheel Quorum Consensus Protocol}
+\newacronym{wvp}{WVP}{Weighted Voting Protocol}
